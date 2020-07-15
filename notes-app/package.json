@@ -1,0 +1,15 @@
+{
+  "name": "notes-app",
+  "version": "1.0.0",
+  "description": "#### commands - node -v             : get version of node - node <FILENAME.JS>  : execute the file (script) - npm -v              : get version of npm - npm init            : initializes the project by creating configuration files (package.json) - npm install <MODULE> : installs the module into your project / application in node_modules directory and a line in the package.json file and updates the package-lock.json - npm install <MODULE>@<VERSION> : installs a specific version of a module - npm install         : using the package.json and package-lock.json, reinstall all the modules (dependencies) into the node_modules dir - npm install -g <MODULE> : install a module globally (on the operating system), so you dont need to import it and allows you to use it in the terminal - nvm ...             : change the version of node",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "chalk": "^4.1.0",
+    "yargs": "^15.3.1"
+  }
+}
