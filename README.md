@@ -56,7 +56,9 @@
   - test library that helps testing http endpoints by providing functions to make http requests and assertions
   - created by the same people that made express
   - `npm i supertest`
-  
+- Socket.io
+  - `npm i socket.io`
+
 #### Typescript
 
 - npm install -g typescript : install typescript globally to use its tools (`tsc` and `tsserver`). if you dont want to install it globally, you can run it from node_modules `./node_modules/.bin/tsc --init`
@@ -941,3 +943,161 @@ test('make request to endpoint', async () => {
   - if you want to mock a scoped npm module (modules with a slash in it) then you simply create a folder in __mocks__ with the name before the slash, then a file with the name after the slash
     - e.g. `@sendmail/mail` will have @sendmail as a folder and `mail.js` as a file
     - when mocking, you will need to mock out the functions that your using otherwise it wont work
+
+  #### Websockets
+
+- Web sockets is a separate protocol from HTTP
+- It allows for full duplex communications which basically means bi directional, from client to server and server to client
+- Clients hold a persistent connection to a server which allows the server to send back data without the client initiating it
+- socket.io is one of the welknown node modules to supports websockets
+- requires support on the server AND the client
+- when using socket.io, with automatically sets up an endpoint for clients to access that allows them to download (via http) a js library file that allows them to communicate via websockets (usually served at `/socker.io/socker.io.js`)
+- the js library exposes several functions, one of which is `io()` that connects to the server and the returned object allows you to send and receive events
+- You'll need to create another js file that will use these functions to communicate with the io server
+- socket.io and express can work together but a basic express app needs to be configured slightly differently
+  - a basic express app by default uses the http core module and creates a http server
+  - you'll need to do this manually for socket.io support and provide the express app to it
+  - with the manually created http server, you then initialize socket.io with the server by calling the function with it
+  - instead of running `listen` on an express app, you run it on the http server
+  - with an instance of socket.io, you can now listen to certain events and register callbacks then they occur
+  - the callback is called with an argument `socket` which is an object that contains information on the connected client
+  - when communicating with clients/server you send messages called `events` and you do so by `emitting` them
+  - the socket object has an `emit` function which is used to send and `event` to the singleclient
+    - when you emit an event, at minimum, you will emit it with the name/type of event as a string along with the data
+    - the client will need to use the object from `io()` to listen to events using the `on(..)` method and 2 arguments, the event name/type and a callback to run on that event
+    - generally, you put all your code that emit messages within the `io.on('connection...)` function
+    - `io.on('connection')` is used when a client connects
+    - if you want to use a client disconnect event, you don't use `io.on()` but rather use `socket.on('disconnect')` from within the function provided to the `connection` event
+
+```javascript
+const express = require('express')
+const http = require('http')
+const socketio = require('socket.io')
+
+//create express app
+const app = express()
+//create http server with the express app
+const httpServer = http.createServer(app)
+//create and init socker.io with the server
+const io = socketio(httpServer)
+
+io.on('connection', (socket) => {
+  console.log('a ws connection was made')
+})
+
+//start up the server
+httpServer.listen(3000, () => {console.log('server started')})
+```
+
+and in the client (browser)
+
+```html
+...
+<script src="/socker.io/socker.io.js"></script>
+<script>
+  const socket = io()
+
+  socket.on('countUpdated', () => {
+    //this runs on the event
+  })
+</script>
+...
+```
+
+- to send data to the clients, you send it as arguments after the type name in `emit`
+- the arguments to the emit function past the event name will all be made available to the clients callback function (order matters)
+
+```javascript
+//server
+io.on('connection',  (socket) => {
+  ...
+  socket.emit('someRandomEvent', data1, data2)
+})
+```
+
+```html
+<script>
+  const socket = io()
+  socket.on('someRandomEvent', (data1, data2) => {
+    console.log('got', data1, data2)
+  })
+</script>
+```
+
+- to send data from the client to the server is just the same, you use the io() object (socket) to emit an event and the server will need to listen for it
+
+```html
+<script>
+  const socket = io()
+  socket.on('someRandomEvent', (data1, data2) => {
+    console.log('got', data1, data2)
+    socket.emit('increment')
+  })
+</script>
+```
+
+```javascript
+io.on('connection',  (socket) => {
+  ...
+  socket.on('increment', () => {
+    count += 1
+    //this ONLY sends data to this client that was connected at this time
+    socket.emit('countUpdated', count)
+
+    //emit an event to all connected clients
+    io.emit('eventName', someData)
+  })
+})
+```
+
+- any emits within the `io.on('connection')` using the socket variable ONLY sends data to that one client that was connected that that point
+- to emit data to ALL clients (including the current one) that are currently connected, you emit through the `io` object. `io.emit('eventName', data)`
+- to emit data to all clients except the currently connected one, you use `socket.broadcast.emit('eventName', func)`
+
+Rooms
+- Socket io supports rooms, where clients can join specific rooms.
+- only the server can do `socker.join(<ROOM_NAME>)` to join a client to a specific room
+- when using rooms, you can choose to emit messages to entire rooms
+- `io.to.(<ROOM_NAME>)emit` emits events to every body in a room including the current client
+- `socket.broadcast.to(<ROOM_NAME>).emit(<message>)` emits events to everybody in a room `excluding` the current client
+
+Acknowledgments
+- events that are triggered/sent via websockets can have acknowledgements. This means that the client to the message and send a message back to the sender to say they have received the event.
+- ack's can happen both ways, from a client to server (where the server sends the ack) or the server to client (where the client sends the ack)
+- ack's are optional
+- to enable ack's you need to do 2 things
+  - provide a callback function to the emitting code that runs after receiving the ack, this call back is the 3rd argument to the emitter (after the data object being send)
+  - update the listener of that event, so that the function takes 2 arguments instead of 1. 1st being the data object and the second is a reference to the callback function. after the function is ready, you invoke the callback, triggering the callback in the producer of the event
+- not only is it possible to ack a message but it is also possible to send data back with the ack
+
+```javascript
+//producer of the event
+socket.emit('eventName', "my data", () => {
+  console.log('the message was delivered to the consumer');
+})
+
+...
+
+//in the consumer
+socket.on('eventName', (sentData, callback) => {
+  //business logic with the sentData object
+  callback(); //trigger the ack
+})
+```
+
+```javascript
+//producer of the event
+socket.emit('eventName', "my data", (dataFromConsumer) => {
+  console.log('the message was delivered to the consumer');
+  console.log(dataFromConsumer);
+})
+
+...
+
+//in the consumer
+socket.on('eventName', (sentData, callback) => {
+  //business logic with the sentData object
+  callback("some data from the consumer"); //trigger the ack with additional data
+})
+
+```
